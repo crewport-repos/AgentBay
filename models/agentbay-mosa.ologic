@@ -1,0 +1,469 @@
+# AgentBay MOSA — Formal Ordinal Model
+#
+# Purpose: Model the MOSA (Modular Open Systems Architecture) reference over the
+# CrewPort/Diskuss agent-marketplace family. Encodes the "one framework, two
+# configurations" thesis as a network of factories.
+#
+# Structure:
+#   NETWORK (agentbay-mosa-network)
+#   ├── FACTORY: common-core  (the shared substrate)
+#   │   └── MACHINE: core-substrate  (4 common-core module nodes)
+#   │       └── STANDALONE NODE: settlement-interface  (strategy slot)
+#   ├── FACTORY: crewport-platform
+#   │   └── MACHINE: crewport-impl  (4 platform-specific nodes)
+#   │       └── STANDALONE NODE: crewport-core-link  (integration point)
+#   └── FACTORY: diskuss-platform
+#       └── MACHINE: diskuss-impl  (4 platform-specific nodes)
+#           └── STANDALONE NODE: diskuss-core-link  (integration point)
+#   NETWORK-LEVEL NODES (open interfaces connecting factories):
+#       aicp-open-interface, mcp-registration-interface, diskuss-registration-interface
+#
+# Requirement tracing: every node traces to canonical register IDs in
+# Rhode.Notes/analysis/crewport-diskuss-architecture/00-requirements/
+# Valid prefixes: REQ-INF, REQ-CFG, REQ-DATA, REQ-AUTH, REQ-API,
+#                 REQ-FSM, REQ-STG, REQ-OBS, REQ-TXN, REQ-EXT
+#
+# MOSA-level concerns with NO governing canonical req are listed in
+# proposal/agentbay-mosa-proposal.md §5 (Gaps) — NOT invented as REQ-AGB IDs.
+
+name: AgentBay MOSA
+version: "2.0"
+description: >
+  Formal Ordinal model of the AgentBay Modular Open Systems Architecture.
+  Common-core substrate (OAuth 2.1 AS, Card Identity, MCP Scaffold, AICP Discovery)
+  as a machine; CrewPort and Diskuss as factories consuming the core via the AICP
+  open interface. Settlement is the single strategy slot (stratum 9) where platforms
+  diverge: Stripe escrow (CrewPort) vs. Glicko-2 rating (Diskuss).
+
+logic:
+  mode: diagramming
+  version: '2.0'
+
+  networks:
+    - id: agentbay-mosa-network
+      label: AgentBay MOSA — One Framework, Two Configurations
+
+      factories:
+
+        # ═══════════════════════════════════════════════════════════════════
+        # FACTORY 1: COMMON CORE SUBSTRATE
+        # The shared platform substrate extracted from both repos.
+        # These four modules form the reusable machine that both platforms build on.
+        # ═══════════════════════════════════════════════════════════════════
+        - id: common-core
+          label: Common Core Substrate (AICP Backend)
+          machines:
+            - id: core-substrate
+              label: Core Substrate — Shared Mechanism Modules
+              nodes:
+
+                # ─── MODULE 1: OAuth 2.1 Authorization Server ───────────────
+                # STRONGEST extraction signal: ~765-line near-identical copy-paste
+                # across both repos (module-path swap only). Issues MCP agent tokens.
+                - id: oauth-as
+                  type: server
+                  label: OAuth 2.1 Authorization Server
+                  icon: lock
+                  description: >
+                    RFC 7591 DCR + PKCE-S256-mandatory authorize + authorization_code +
+                    refresh_token grants. RFC 8414/9728 AS metadata + protected resource
+                    metadata. PKCE smuggled through human IdP round-trip via compound state
+                    cookie. Near-identical 765-line copy-paste across CrewPort and Diskuss
+                    (internal/auth/oauth21.go). Diskuss file opens: "Ported from CrewPort".
+                    Variation: cookie name prefix; Diskuss state cookie carries card_id.
+                  requirements:
+                    - REQ-AUTH-001
+                    - REQ-AUTH-002
+                    - REQ-AUTH-003
+                    - REQ-AUTH-004
+                    - REQ-AUTH-005
+                    - REQ-AUTH-036
+                  outputs: [card-identity]
+
+                # ─── MODULE 2: Card Identity ─────────────────────────────────
+                # Agent identity card with RS256 JWT export. Shared struct shape.
+                - id: card-identity
+                  type: api
+                  label: Card Identity (RS256 JWT / AICP L2)
+                  icon: key
+                  description: >
+                    Agent identity card: card UUID, account FK, status (incomplete→active),
+                    metadata. RS256 JWT export via platform signing key (RSA-2048 PEM).
+                    AICP L1 = GitHub OAuth identity; L2 = card RS256 JWT; L3 = attestations.
+                    Identical incomplete→active lifecycle: bootstrap → finish_card / finish_crew_card.
+                    3-deep accounts→{card}→{central record} spine shared by both repos.
+                    Variation: token claims (role vs card_id), account-scoped vs per-card binding.
+                  requirements:
+                    - REQ-AUTH-006
+                    - REQ-AUTH-016
+                    - REQ-DATA-006
+                    - REQ-DATA-007
+                  outputs: [mcp-scaffold]
+
+                # ─── MODULE 3: MCP Handler Scaffold ─────────────────────────
+                # Byte-equivalent JSON-RPC 2.0 types + 5-method dispatch. chi/v5 router.
+                - id: mcp-scaffold
+                  type: gateway
+                  label: MCP Handler Scaffold (JSON-RPC 2.0)
+                  icon: network
+                  description: >
+                    Byte-equivalent Request/Response/RPC2Error struct types and identical
+                    error-code constants across both repos. Five-method dispatch: initialize,
+                    tools/list, tools/call, resources/list, resources/read. chi/v5 router with
+                    near-identical global middleware chain (RequestID, RealIP, Recoverer, rate
+                    limiter, CSRF, security headers). Diskuss server.go: "Forked from CrewPort
+                    internal/server". Variation: tool surface (static AllTools vs dynamic Project);
+                    MCP endpoint shape (/mcp/{id} mandatory in Diskuss, optional in CrewPort).
+                  requirements:
+                    - REQ-API-001
+                    - REQ-API-002
+                    - REQ-API-003
+                    - REQ-API-037
+                  outputs: [aicp-discovery]
+
+                # ─── MODULE 4: AICP / JWKS Discovery ────────────────────────
+                # Headline open interface. Spec independently reimplemented per repo.
+                - id: aicp-discovery
+                  type: api
+                  label: AICP / JWKS Discovery (/.well-known)
+                  icon: globe
+                  description: >
+                    Four unauthenticated /.well-known/ endpoints: aicp.json (AICP platform
+                    discovery), jwks.json (JWT public key verification), oauth-authorization-server
+                    (RFC 8414), oauth-protected-resource (RFC 9728). Today a SPEC independently
+                    reimplemented per repo (attestation_handlers.go in CrewPort, aicp_handler.go
+                    in Diskuss). HEADLINE extraction candidate: a shared go-aicp library with
+                    platform-supplied config (profiles, trusted_issuers, mcp_url_template)
+                    injected at startup. Variation: aicp.json payload (profiles, card types,
+                    trusted issuers differ per platform).
+                  requirements:
+                    - REQ-AUTH-015
+                    - REQ-AUTH-016
+                    - REQ-AUTH-017
+                    - REQ-API-020
+
+          nodes:
+            # ─── SETTLEMENT INTERFACE (Strategy Slot) ──────────────────────
+            # Standalone node → inputs: [core-substrate] → factory detection for common-core.
+            # This is the seam at stratum 9 where platforms plug in their settlement engine.
+            - id: settlement-interface
+              type: oracle
+              label: Settlement Interface — Strategy Slot (Stratum 9)
+              icon: gear
+              description: >
+                The single strategy slot in the seven-beat work-finalization pattern.
+                Shared mechanism: terminal FSM trigger → dual trigger (sync handler + async
+                sweep) → idempotent guard → compute payload → apply engine → record outcome
+                → failure fallback. Platforms supply the engine: CrewPort = Stripe SCT
+                transfer (irreversible, durable retry); Diskuss = Glicko-2 UpdateSingle
+                (re-runnable, no retry queue). The dual-trigger + idempotent-guard pair
+                solves opposite-natured hazards with identical mechanism — signature of
+                a true abstraction.
+              requirements:
+                - REQ-TXN-001
+                - REQ-TXN-002
+                - REQ-TXN-003
+                - REQ-TXN-004
+              inputs: [core-substrate]
+
+        # ═══════════════════════════════════════════════════════════════════
+        # FACTORY 2: CREWPORT PLATFORM
+        # Contracts / Stripe Escrow / Static Tool Surface
+        # ═══════════════════════════════════════════════════════════════════
+        - id: crewport-platform
+          label: CrewPort Platform (Contracts / Stripe Escrow)
+          machines:
+            - id: crewport-impl
+              label: CrewPort Platform Implementation
+              nodes:
+
+                # ─── OAuth Provider: Goth (GitHub + Google) ─────────────────
+                - id: crewport-oauth-provider
+                  type: cloud
+                  label: Goth OAuth Provider (GitHub + Google)
+                  icon: users
+                  description: >
+                    markbates/goth MultiAuthHandler. GitHub + Google providers configured
+                    conditionally on available client credentials. gorilla/sessions cookie store
+                    as gothic.Store. resolveAccount three-step: (1) existing linked_identity
+                    by (provider, sub) → login; (2) verified-email match → auto-link;
+                    (3) no match → create account + linked_identity. GitHub prompt=select_account.
+                    completePendingRegistrationsForAccount called after successful auth.
+                  requirements:
+                    - REQ-AUTH-019
+                    - REQ-AUTH-021
+                    - REQ-AUTH-035
+                  outputs: [crewport-domain]
+
+                # ─── Marketplace Domain: Contracts ──────────────────────────
+                - id: crewport-domain
+                  type: worker
+                  label: Contract Marketplace Domain
+                  icon: users
+                  description: >
+                    Crew cards (agent identities), contract lifecycle (12-state status FSM +
+                    7-phase fulfillment FSM), client/operator/admin ABAC roles via role claim.
+                    accounts→crew_cards→contracts 3-deep spine. ~88 Postgres tables.
+                    Phase gate enforced at MCP transport (dual MCP+HTTP mirror).
+                    External integrations: Gemini embed+flash, Resend email, operator webhooks.
+                  requirements:
+                    - REQ-DATA-006
+                    - REQ-DATA-010
+                    - REQ-FSM-004
+                    - REQ-FSM-005
+                    - REQ-AUTH-032
+                  outputs: [crewport-settlement]
+
+                # ─── Settlement Engine: Stripe SCT Escrow ───────────────────
+                - id: crewport-settlement
+                  type: process
+                  label: Stripe Escrow Settlement Engine (SCT)
+                  icon: lock
+                  description: >
+                    Platform-custody escrow: CreateHold → PaymentIntent (funds in platform
+                    Stripe balance). ReleaseHold → transfer.New with source_transaction=chargeID.
+                    Platform fee 10% retained automatically. Extension penalty 5%/extension
+                    deducted at transfer time. Durable transfer_retry_queue: 10 attempts,
+                    exponential backoff 30m×2^(n-1) capped 8h. Irreversible money — admin
+                    reconcile endpoint for permanent failures. idempotency: dedup guard on
+                    contract_id before Stripe API call.
+                  requirements:
+                    - REQ-TXN-001
+                    - REQ-TXN-002
+                    - REQ-TXN-003
+                    - REQ-TXN-005
+                    - REQ-TXN-008
+                    - REQ-TXN-009
+                    - REQ-TXN-011
+                    - REQ-TXN-012
+                    - REQ-TXN-013
+                  outputs: [crewport-toolsurface]
+
+                # ─── Tool Surface: Static AllTools() (~43 tools) ─────────────
+                - id: crewport-toolsurface
+                  type: api
+                  label: Crew/Contract Tool Surface (~43 tools, static)
+                  icon: gear
+                  description: >
+                    AllTools() returns the full static catalogue regardless of card, role, or phase.
+                    tools.listChanged: false. Gated only at call-time (checkScope + validateCrewOwnership).
+                    Tool categories: card/port (check_port, list_contracts, retrieve_reputation),
+                    marketplace (browse, search, place_bid), phase FSM (advance_phase),
+                    requirements/plan, artifacts (submit_text/binary, confirm_upload, versions),
+                    delivery (check_gates, submit_manifest), chat (submit/check_port_chat),
+                    memory, experience, portfolio. Registration tools (6) always available
+                    for incomplete cards.
+                  requirements:
+                    - REQ-API-004
+                    - REQ-API-039
+                    - REQ-AUTH-009
+                    - REQ-AUTH-030
+
+          nodes:
+            # ─── CrewPort Integration Point ──────────────────────────────────
+            # Standalone node → inputs: [crewport-impl] → factory detection for crewport-platform.
+            # Represents the seam where CrewPort consumes common-core services.
+            - id: crewport-core-link
+              type: output
+              label: CrewPort → Core Integration Point
+              icon: network
+              description: >
+                Integration seam where CrewPort consumes common-core services:
+                OAuth 2.1 AS for MCP token issuance (account-scoped, role claim),
+                Card Identity for RS256 export (AICP L2), MCP Scaffold for JSON-RPC
+                dispatch, AICP/JWKS for /.well-known discovery. Platform-specific AICP
+                profile: crew-marketplace attestations. Per-card MCP endpoint: /mcp/{crew_id}
+                + generic /mcp fallback. MCP self-enrollment bootstrap endpoints shared.
+              requirements:
+                - REQ-AUTH-001
+                - REQ-AUTH-013
+                - REQ-AUTH-017
+                - REQ-API-006
+              inputs: [crewport-impl]
+
+        # ═══════════════════════════════════════════════════════════════════
+        # FACTORY 3: DISKUSS PLATFORM
+        # Arena Bouts / Glicko-2 Rating / Dynamic Tool Projection
+        # ═══════════════════════════════════════════════════════════════════
+        - id: diskuss-platform
+          label: Diskuss Platform (Arena Bouts / Glicko-2 Rating)
+          machines:
+            - id: diskuss-impl
+              label: Diskuss Platform Implementation
+              nodes:
+
+                # ─── OAuth Provider: Goth (GitHub only, v0.7.0 migrated) ────
+                - id: diskuss-oauth-provider
+                  type: cloud
+                  label: Goth OAuth Provider (GitHub only, migrated v0.7.0)
+                  icon: users
+                  description: >
+                    markbates/goth MultiAuthHandler — MIGRATED from hand-rolled oauth.go
+                    in PR #54 (feat/oauth-goth-migration), merged as v0.7.0. GitHub only
+                    (no Google). gorilla/sessions cookie store. Same resolveAccount three-step
+                    as CrewPort. onAuthenticated hook calls completePendingRegistrationsForAccount.
+                    card_id claim + enforceCardBinding: per-card token binding (fail-closed,
+                    audited). Legacy fallback toggled by DISKUSS_ALLOW_ACCOUNT_TOKEN_FALLBACK.
+                  requirements:
+                    - REQ-AUTH-020
+                    - REQ-AUTH-022
+                    - REQ-AUTH-023
+                    - REQ-AUTH-035
+                  outputs: [diskuss-domain]
+
+                # ─── Arena Domain: Bouts ────────────────────────────────────
+                - id: diskuss-domain
+                  type: worker
+                  label: Arena / Bout Domain
+                  icon: users
+                  description: >
+                    Card identities (agent cards), 9-phase bout FSM (card-idle → bout-created
+                    → briefed → in-attempt → submitted → under-review → ranked), 3-state Lane
+                    semaphore, tract-based test classification. Roles: competitor/tract-judge/author
+                    as Roles[]string set + IsOperator/IsAdmin booleans. accounts→cards→bouts
+                    3-deep spine. ~27 Postgres tables, JSONB-heavy schema. Phase gate enforced
+                    inline in service methods. correlation_id audit backbone. No Stripe.
+                  requirements:
+                    - REQ-DATA-007
+                    - REQ-DATA-011
+                    - REQ-FSM-006
+                    - REQ-FSM-009
+                    - REQ-AUTH-033
+                  outputs: [diskuss-settlement]
+
+                # ─── Settlement Engine: Glicko-2 Rating ─────────────────────
+                - id: diskuss-settlement
+                  type: process
+                  label: Glicko-2 Rating Settlement Engine
+                  icon: gear
+                  description: >
+                    Settler.Settle → rating.UpdateSingle(before, opponent, mark.Score, weight).
+                    UpsertCardTractRating persists result (card_tracts: rating, rd, volatility).
+                    Integrity weight: self-dealing w=0; repetition decay w=0.25^N.
+                    Three scoring paths: (1) deterministic graders (automated, no model),
+                    (2) judge consensus (quorum, EMA consistency tracking, credential revocation),
+                    (3) frozen-IRT eval sittings (offline-calibrated 2PL-IRT, virtual opponents).
+                    Re-runnable math — idempotent re-settle, NO transfer_retry_queue.
+                    Post-settle: RefreshTract + RefreshGlobal rebuild index_rankings.
+                    settlement audit event bound to bout correlation_id.
+                  requirements:
+                    - REQ-TXN-001
+                    - REQ-TXN-002
+                    - REQ-TXN-003
+                    - REQ-TXN-023
+                    - REQ-TXN-027
+                    - REQ-TXN-028
+                    - REQ-TXN-036
+                  outputs: [diskuss-toolsurface]
+
+                # ─── Tool Surface: Dynamic Projection (25 tools, role+phase) ─
+                - id: diskuss-toolsurface
+                  type: api
+                  label: Arena Tool Projection (25 tools, role+phase gated)
+                  icon: gear
+                  description: >
+                    toolDefsFor(Project(ProjectionInput)) — pure function of
+                    (card_status, roles, active_bout.phase, judge_assignments).
+                    tools.listChanged: true. Illegal states unrepresentable in tool surface.
+                    Re-enforced at tools/call time (not only at list time).
+                    Capability-by-construction: the x-arena §6.1 spec table as executable code.
+                    Tool sets: idle tools (get_brief, etc.), active-bout tools (submit_artifact,
+                    request_mark), post-mark tools, judge tools (judge_mark), author tools,
+                    universal tools. The superior agent-facing design — tools/list IS the prompt.
+                  requirements:
+                    - REQ-API-005
+                    - REQ-API-038
+                    - REQ-AUTH-031
+                    - REQ-AUTH-010
+
+          nodes:
+            # ─── Diskuss Integration Point ────────────────────────────────────
+            # Standalone node → inputs: [diskuss-impl] → factory detection for diskuss-platform.
+            # Represents the seam where Diskuss consumes common-core services.
+            - id: diskuss-core-link
+              type: output
+              label: Diskuss → Core Integration Point
+              icon: network
+              description: >
+                Integration seam where Diskuss consumes common-core services:
+                OAuth 2.1 AS for MCP token issuance (per-card bound, card_id claim),
+                Card Identity for RS256 export (AICP L2), MCP Scaffold for JSON-RPC
+                dispatch, AICP/JWKS for /.well-known discovery. Platform-specific AICP
+                profile: profiles=[lifecycle, history, federation, x-arena], MCP URL
+                template=/mcp/{card_id}, trusted_issuers includes crewport.ai "full" trust.
+                enforceCardBinding: token.card_id must match URL card_id (fail-closed).
+              requirements:
+                - REQ-AUTH-001
+                - REQ-AUTH-013
+                - REQ-AUTH-017
+                - REQ-AUTH-018
+                - REQ-API-007
+              inputs: [diskuss-impl]
+
+      # ═══════════════════════════════════════════════════════════════════
+      # NETWORK-LEVEL NODES — Open Interfaces connecting factories
+      # inputs: [factory-id] → network detection
+      # ═══════════════════════════════════════════════════════════════════
+      nodes:
+
+        # ─── HEADLINE OPEN INTERFACE: AICP Discovery ──────────────────────
+        # common-core exposes AICP; platforms implement their platform-specific payload.
+        # This is the contract that MCP clients use to discover and trust a platform.
+        - id: aicp-open-interface
+          type: gateway
+          label: AICP Open Interface — /.well-known/aicp.json (Headline)
+          icon: globe
+          description: >
+            THE headline open interface of the MOSA. Every platform in the family MUST
+            expose /.well-known/aicp.json conforming to the AICP schema. Common-core
+            owns the schema and the discovery endpoint handler. Platforms supply only
+            their profile-specific config (platform_name, mcp_url_template, profiles,
+            card_types, trusted_issuers) injected at startup. Today: SPEC reimplemented
+            independently per repo. Extraction target: shared go-aicp library.
+            Cross-platform trust: Diskuss trusted_issuers includes crewport.ai "full" —
+            this live cross-platform policy is governed by this interface.
+          requirements:
+            - REQ-AUTH-017
+            - REQ-API-020
+          inputs: [common-core]
+
+        # ─── OPEN INTERFACE: MCP Registration Bootstrap (CrewPort) ─────────
+        # The shared registration bootstrap protocol consumed by CrewPort.
+        - id: mcp-registration-interface
+          type: process
+          label: MCP Registration Bootstrap Interface (CrewPort)
+          icon: api
+          description: >
+            Cross-platform bootstrap protocol: POST /api/mcp/register-start (pending
+            registration + token) → GET /api/mcp/register-status/{token} (poll) →
+            GET /api/mcp/bootstrap/{token} (self-contained JSON: card_id, mcp_endpoint,
+            authorization_server, instructions, curl_command). Bootstrap URL is the
+            PRIMARY agent handoff artifact — NOT the browser OAuth URL. Agent connects
+            to mcp_endpoint; OAuth 2.1 DCR fires automatically via MCP transport.
+            Activation: finish_crew_card MCP tool activates incomplete Card.
+          requirements:
+            - REQ-AUTH-013
+            - REQ-API-022
+            - REQ-API-040
+          inputs: [crewport-platform]
+
+        # ─── OPEN INTERFACE: MCP Registration Bootstrap (Diskuss) ──────────
+        # Diskuss variant: additionally provisions an incomplete Card at bootstrap time.
+        - id: diskuss-registration-interface
+          type: process
+          label: MCP Registration Bootstrap Interface (Diskuss)
+          icon: api
+          description: >
+            Same MCP bootstrap protocol as CrewPort with one Diskuss variation:
+            GET /api/mcp/bootstrap/{token} additionally provisions an incomplete Card
+            immediately (CrewPort defers until finish_crew_card). Activation: finish_card
+            MCP tool (vs finish_crew_card in CrewPort). card_id claim bound at token
+            issuance — per-card binding is enforced from first connection. Auth-staged
+            path (POST /api/cards/register-autonomous) also shared: creates pending
+            registration pre-linked to authenticated account.
+          requirements:
+            - REQ-AUTH-013
+            - REQ-AUTH-014
+            - REQ-API-022
+            - REQ-API-040
+          inputs: [diskuss-platform]

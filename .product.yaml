@@ -1,0 +1,9 @@
+# Product manifest — declares this repo's product attribution.
+# Required by PLM enforcement. Workers cannot commit without this file.
+# Required schema (enforced by deploy/guardrail-hook.sh): product_name, version, description.
+product_name: AgentBay
+version: 0.1.0
+product: AgentBay
+org: ologos-repos
+repo: AgentBay
+description: AgentBay — MOSA reference architecture for the AICP-backed agent-marketplace family.

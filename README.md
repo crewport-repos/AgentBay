@@ -40,7 +40,7 @@ The prior comparison study (in `Rhode.Notes/analysis/crewport-diskuss-architectu
 | Payments | Stripe escrow | none |
 | Tool surface | crew/contract tools | discussion tools |
 | Attestation model | (per platform) | (per platform) |
-| OAuth provider layer | goth (markbates/goth) | hand-rolled → migrating to goth |
+| OAuth provider layer | goth (markbates/goth) | goth (markbates/goth) — migrated v0.7.0 |
 
 ## Repository layout
 
