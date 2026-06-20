@@ -224,6 +224,73 @@ logic:
                     - REQ-INF-002
                     - REQ-API-001
                     - REQ-API-002
+                  outputs: [deliverables]
+
+                # ─── MODULE 8: Deliverables / Artifact Submission Surface ─────
+                # FIRST-CLASS PILLAR (GAP 3 closed). Both repos expose a named
+                # deliverable surface: CrewPort via submit_text_artifact /
+                # confirm_artifact_upload / submit_delivery_manifest; Diskuss via
+                # submit_artifact / request_mark tied to bout phases. Storage blobs
+                # via internal/storage/storage.go in both repos.
+                - id: deliverables
+                  type: process
+                  label: Deliverables — Artifact Submission Surface (First-Class Pillar)
+                  icon: gear
+                  description: >
+                    The first-class deliverable submission surface through which agents
+                    upload artifacts (text or binary blobs) tied to an engagement record.
+                    This is a DISTINCT named pillar parallel to the engagement FSM primitive,
+                    not a sub-feature of it (previously buried as a sub-bullet of
+                    REQ-DATA-010/011 — promoted here). Both repos implement this surface:
+                    CrewPort: submit_text_artifact, confirm_artifact_upload,
+                    submit_delivery_manifest (internal/mcp/tools.go ~298).
+                    Diskuss: submit_artifact, request_mark tied to bout phases
+                    (internal/bouts/service.go ~439). Storage blobs via
+                    internal/storage/storage.go in both repos (S3/Tigris backend).
+                    The AV scanning gate (module 9 below) is the required guardrail for
+                    any file-blob artifact entering this surface.
+                  requirements:
+                    - REQ-DATA-036
+                    - REQ-API-041
+                    - REQ-API-042
+                    - REQ-DATA-010
+                    - REQ-DATA-011
+                  outputs: [av-scanning]
+
+                # ─── MODULE 9: AV Gate (Open Interface / Lifecycle Mandate) ─
+                # CORE SECURITY MODULE (GAP 1 closed).
+                # This is an OPEN INTERFACE — the mandate (scan MUST gate artifact
+                # promotion) is non-negotiable; the scanner backend is pluggable.
+                # Cloudmersive is one conforming implementation. Both repos ship
+                # internal/scanning/scanner.go as the current concrete backend.
+                # Variation: scanner choice + enforcement rigor.
+                # CrewPort CONFORMS: enforces synchronously (clean-gate).
+                # Diskuss VIOLATES: scanner no-ops (scan_status='skipped') — CONFORMANCE VIOLATION.
+                - id: av-scanning
+                  type: firewall
+                  label: AV Gate — Malware Scan Mandate (Open Interface)
+                  icon: lock
+                  description: >
+                    OPEN INTERFACE / LIFECYCLE GATE MANDATE. A conforming malware/AV
+                    scan MUST gate every artifact blob's promotion to the final
+                    artifact depository before acceptance into the engagement record.
+                    scan_status (clean/infected/skipped) MUST be persisted.
+                    The scanner backend is PLUGGABLE — this is an open interface, not
+                    a vendor mandate. Cloudmersive is one conforming implementation.
+                    The mandate is non-negotiable; the scanner choice is the variation point.
+                    CrewPort CONFORMS (REQ-STG-030): fulfillment_handlers.go:474 gates
+                    on scan_status; synchronous scan-on-upload rejects infected artifacts.
+                    Diskuss VIOLATES (REQ-STG-031): scanner is constructed but never
+                    invoked; scan_status hardcoded 'skipped'. Migration
+                    000006_tests_submissions.up.sql:72 states "File blobs MUST be
+                    malware-scanned" — this is a CONFORMANCE VIOLATION of the AgentBay
+                    AV Gate mandate, not merely a gap. Any Diskuss deployment accepting
+                    file artifacts MUST remediate before enabling file artifact submission.
+                  requirements:
+                    - REQ-STG-028
+                    - REQ-STG-029
+                    - REQ-STG-030
+                    - REQ-STG-031
 
           nodes:
             # ─── SETTLEMENT INTERFACE (Strategy Slot) ──────────────────────
@@ -295,6 +362,31 @@ logic:
                     - REQ-FSM-004
                     - REQ-FSM-005
                     - REQ-AUTH-032
+                  outputs: [crewport-plm]
+
+                # ─── PLM Lifecycle Layer (VARIATION POINT, CrewPort only) ─────
+                # GAP 2 closed. A product/milestone/release-gating layer layered ON
+                # TOP of the engagement primitive. Diskuss has NO PLM layer — it uses
+                # only the bout-lifecycle FSM. PLM is a named variation point, NOT core.
+                - id: crewport-plm
+                  type: orchestrator
+                  label: PLM Lifecycle Layer (Variation Point — CrewPort only)
+                  icon: gear
+                  description: >
+                    CrewPort-only product lifecycle management layer layered ON TOP of the
+                    shared engagement primitive (§1.6). Provides plm_milestones and
+                    plm_milestone_goals tables, an 8-phase fulfillment pipeline with
+                    milestone gating, and phase documentation. This layer wraps engagements
+                    in a product/release lifecycle absent from Diskuss. Evidence:
+                    tools/migrate-data/main.go:193-220 (migrates PLM products / milestones /
+                    projects / requirements); web/public/okf/fulfillment/phases.md (8-phase
+                    docs); plm_milestones + plm_milestone_goals tables in schema.
+                    Diskuss has NO PLM layer (JSONB-heavy schema, bout-lifecycle FSM only).
+                    THIS IS A VARIATION POINT — not part of the common-core engagement
+                    primitive. A platform MAY supply a PLM layer; it is not required.
+                  requirements:
+                    - REQ-FSM-029
+                    - REQ-FSM-005
                   outputs: [crewport-settlement]
 
                 # ─── Settlement Engine: Stripe SCT Escrow ───────────────────

@@ -191,9 +191,67 @@ varies (proposal §3). See proposal §1.8.
 
 ---
 
+### 1.9 Deliverables / Artifact Submission Surface (`deliverables`)
+
+**MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/deliverables`
+**Type:** `process`
+**Extraction evidence:** Both repos expose named MCP deliverable-submission tools backed by the same S3/Tigris blob storage pattern. Previously buried as a sub-bullet of the engagement primitive (REQ-DATA-010/011) — elevated to first-class pillar.
+
+| Canonical REQ-ID | Requirement summary | System | CrewPort instance nodes | Diskuss instance nodes |
+|------------------|---------------------|--------|------------------------|------------------------|
+| REQ-DATA-036 | First-class deliverable submission surface distinct from the engagement FSM primitive; storage via S3/Tigris | [both] | `crewport/07-agent-gateway.ologic#fulfillment-tools` | `diskuss/07-agent-gateway.ologic#active-tools`, `#post-mark-tools` |
+| REQ-API-041 | CrewPort MCP tools: `submit_text_artifact`, `confirm_artifact_upload`, `submit_delivery_manifest` | [crewport] | `crewport/07-agent-gateway.ologic#fulfillment-tools`, `crewport/01-infrastructure.ologic#mcp-executor` | _(N/A — Diskuss variation: REQ-API-042)_ |
+| REQ-API-042 | Diskuss MCP tools: `submit_artifact` (in-attempt phase), `request_mark` (submitted phase) | [diskuss] | _(N/A — CrewPort variation: REQ-API-041)_ | `diskuss/07-agent-gateway.ologic#active-tools`, `diskuss/02-arena-flow.ologic#in-attempt` |
+| REQ-DATA-010 | Contract engagement record includes artifact/output surface | [crewport] | `crewport/03-data-objects.ologic#contracts`, `#contract-bids` | _(variant: REQ-DATA-011)_ |
+| REQ-DATA-011 | Bout engagement record includes artifact/output surface | [diskuss] | _(variant: REQ-DATA-010)_ | `diskuss/02-arena-flow.ologic#bout-created`, `diskuss/03-data-objects.ologic#bouts` |
+
+**Note:** REQ-DATA-010 and REQ-DATA-011 were previously traced only to the `engagement-primitive` node.
+They are now ALSO traced here, acknowledging that the artifact surface is a distinct first-class pillar
+(not just an attribute of the engagement record). The engagement-primitive node retains its references
+for completeness; both nodes share governance of these REQ-IDs.
+
+---
+
+### 1.10 AV Gate — Malware Scan Mandate (`av-scanning`)
+
+**MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/av-scanning`
+**Type:** `firewall`
+**Architecture:** This is an **open interface / lifecycle gate mandate** — not a vendor requirement. The mandate (a conforming scan MUST gate artifact promotion to the final depository) is non-negotiable. The scanner backend is pluggable. Cloudmersive is the current conforming implementation in both repos. The variation point is the scanner choice. Diskuss's no-op is a **CONFORMANCE VIOLATION** of the mandate, not merely a "variation."
+
+| Canonical REQ-ID | Requirement summary | System | CrewPort instance nodes | Diskuss instance nodes |
+|------------------|---------------------|--------|------------------------|------------------------|
+| REQ-STG-028 | Every artifact blob MUST be malware-scanned before acceptance; `scan_status` (clean/infected/skipped) MUST be persisted | [both] | `crewport/07-agent-gateway.ologic#fulfillment-tools` (gate enforces this) | `diskuss/07-agent-gateway.ologic` (**absent** — scanner constructed, never invoked; this is the defect gap) |
+| REQ-STG-029 | Only `scan_status='clean'` artifacts accepted; `scan_status='infected'` rejected at upload | [both] | `crewport/07-agent-gateway.ologic#fulfillment-tools` (fulfillment_handlers.go:474 gate) | _(Diskuss: not yet implemented; REQ-STG-031 defect flag)_ |
+| REQ-STG-030 | CrewPort enforces AV gate synchronously: scan on upload → persist status → reject if not clean | [crewport] | `crewport/07-agent-gateway.ologic#fulfillment-tools`, `crewport/01-infrastructure.ologic#mcp-executor` | _(N/A — CrewPort-only enforcement)_ |
+| REQ-STG-031 | Diskuss no-ops the AV gate: scanner built but never invoked; `scan_status='skipped'` hardcoded — LATENT DEFECT | [diskuss] | _(N/A — Diskuss-specific defect flag)_ | `diskuss/07-agent-gateway.ologic` (absence of scanner invocation = compliance gap) |
+
+**Security note:** REQ-STG-031 is a HIGH-severity **CONFORMANCE VIOLATION**. The AgentBay MOSA AV Gate
+mandate (REQ-STG-028) is non-negotiable. The `av-scanning` firewall node formalizes this open interface
+contract so no future instantiation can silently ship with an uninvoked scanner. Any platform that does
+NOT invoke a conforming scanner at the artifact promotion gate MUST be flagged as non-conformant.
+
+---
+
 ## 2. Platform-Specific Variation Point Traceability
 
 ### 2.1 CrewPort Platform Variations
+
+#### PLM Lifecycle Layer (Variation Point) — `crewport-plm`
+
+**MOSA node ID:** `agentbay-mosa-network/crewport-platform/crewport-impl/crewport-plm`
+**Type:** `orchestrator`
+**Evidence:** CrewPort-only. Diskuss has no PLM layer (only the bout-lifecycle FSM).
+
+| Canonical REQ-ID | Requirement summary | CrewPort instance nodes |
+|------------------|---------------------|------------------------|
+| REQ-FSM-029 | PLM lifecycle layer: `plm_milestones` + `plm_milestone_goals`, 8-phase pipeline, milestone gating | `crewport/06-plm.ologic#phase-validator`, `#pipeline-coordinator`, `crewport/03-data-objects.ologic` (plm_* tables) |
+| REQ-FSM-005 | 7-phase fulfillment FSM gated by `advance_phase` (part of PLM layer) | `crewport/06-plm.ologic#phase-validator`, `crewport/07-agent-gateway.ologic#phase-accepted`, `#phase-plan`, `#phase-working`, `#phase-submitting`, `#phase-review` |
+
+**Variation note:** This PLM layer is **absent from Diskuss**. The engagement primitive (§1.6) is shared;
+the PLM lifecycle layer wrapping it is CrewPort-only. A future platform MAY supply a PLM layer; it
+is not required by the MOSA common core.
+
+---
 
 #### OAuth Provider: Goth (GitHub + Google) — `crewport-oauth-provider`
 
@@ -302,9 +360,12 @@ It represents the headline open interface: every platform MUST implement `/.well
 | `engagement-primitive` | REQ-DATA-006, -007, -010, -011, REQ-FSM-004, -005, -006, -009 | 8 reqs governed |
 | `ports` | REQ-FSM-006, -009, REQ-DATA-010, -011, REQ-API-004 | 5 reqs governed |
 | `dashboard-console` | REQ-INF-001, -002, REQ-API-001, -002 | 4 reqs governed |
+| `deliverables` *(NEW — Gap 3)* | REQ-DATA-036, REQ-API-041, REQ-API-042, REQ-DATA-010, REQ-DATA-011 | 5 reqs governed |
+| `av-scanning` *(NEW — Gap 1)* | REQ-STG-028, REQ-STG-029, REQ-STG-030, REQ-STG-031 | 4 reqs governed |
 | `settlement-interface` | REQ-TXN-001, -002, -003, -004 | 4 reqs governed |
 | `crewport-oauth-provider` | REQ-AUTH-019, -021, -035 | 3 reqs governed |
 | `crewport-domain` | REQ-DATA-006, -010, REQ-FSM-004, -005, REQ-AUTH-032 | 5 reqs governed |
+| `crewport-plm` *(NEW — Gap 2)* | REQ-FSM-029, REQ-FSM-005 | 2 reqs governed |
 | `crewport-settlement` | REQ-TXN-001, -002, -003, -005, -008, -009, -011, -012, -013 | 9 reqs governed |
 | `crewport-toolsurface` | REQ-API-004, -039, REQ-AUTH-009, -030 | 4 reqs governed |
 | `crewport-core-link` | REQ-AUTH-001, -013, -017, REQ-API-006 | 4 reqs governed |
@@ -317,9 +378,10 @@ It represents the headline open interface: every platform MUST implement `/.well
 | `mcp-registration-interface` | REQ-AUTH-013, REQ-API-022, -040 | 3 reqs governed |
 | `diskuss-registration-interface` | REQ-AUTH-013, -014, REQ-API-022, -040 | 4 reqs governed |
 
-**Unique canonical REQ-IDs governed by the MOSA model:** ~40 distinct requirements
-(across 10 strata: AUTH, DATA, API, FSM, TXN — covering the most architecturally
-significant cross-cutting concerns identified in the master-architecture study).
+**Unique canonical REQ-IDs governed by the MOSA model:** ~51 distinct requirements
+(across 10 strata: AUTH, DATA, API, FSM, TXN, STG — added 11 new REQ-IDs in gap closure:
+REQ-DATA-036, REQ-API-041, REQ-API-042, REQ-STG-028 through -031, REQ-FSM-029 + the
+nodes `deliverables`, `av-scanning`, `crewport-plm` added to the model).
 
 ### Instance Model Coverage (from Rhode.Notes TRACEABILITY.md)
 
@@ -362,7 +424,9 @@ and are NOT modeled with invented IDs:
 - AICP schema governance (schema version ownership)
 - Cross-platform trust bootstrap governance (trusted-issuer allowlist lifecycle)
 - Card-binding security parity (CrewPort should port enforceCardBinding)
-- AV gate parity (Diskuss dead scanner scaffolding)
+- ~~AV gate parity~~ — **CLOSED:** now governed by REQ-STG-028 through REQ-STG-031; modeled as `av-scanning` firewall node in core-substrate chain.
+- ~~Deliverables as sub-bullet~~ — **CLOSED:** now governed by REQ-DATA-036, REQ-API-041, REQ-API-042; modeled as `deliverables` process node in core-substrate chain.
+- ~~PLM unnamed~~ — **CLOSED:** now governed by REQ-FSM-029; modeled as `crewport-plm` orchestrator node in crewport-impl machine.
 - Metrics / RED instrumentation (both repos have zero metrics)
 
 ---
@@ -378,11 +442,21 @@ The "common-core" claim in the MOSA is grounded as follows:
 | **Engagement Primitive** | Identical accounts→card→engagement spine; phase-gated FSM in both; `bouts/lifecycle.go:5-8` cites CrewPort contract FSM as origin. Contract and bout are specializations of one object — CORE, not a variation point |
 | **Ports / Occupancy** | CrewPort namesake (`check_port`, `submit_port_chat`); Diskuss 3-state Lane semaphore is the same acquire→hold→release occupancy mechanism tracking the engagement FSM |
 | **Dashboard / Console** | Identical deployment shape: Vite SPA embedded in single binary, served with API from :8080 (proposal §4); operator/admin view over engagement state in both |
+| **Deliverables / Artifact Submission Surface** *(Gap 3 — elevated)* | Both repos expose named MCP deliverable-submission tools (3 tools each) backed by the same S3/Tigris blob storage pattern. CrewPort: `submit_text_artifact` / `confirm_artifact_upload` / `submit_delivery_manifest`. Diskuss: `submit_artifact` / `request_mark`. Same `internal/storage/storage.go` S3/Tigris backend pattern. Previously buried as sub-bullet of REQ-DATA-010/011 — elevated to first-class pillar with dedicated REQ-DATA-036, REQ-API-041, REQ-API-042. |
+| **AV Gate / Malware Scan Mandate** *(Gap 1 — added as open interface)* | Both repos ship `internal/scanning/scanner.go` (Cloudmersive as the current conforming backend). Both define `scan_status` on artifact records. Both migration files state "MUST be malware-scanned." The AV gate is a **non-negotiable lifecycle mandate** (REQ-STG-028) with a pluggable scanner backend — not a vendor requirement. CrewPort CONFORMS (REQ-STG-030); Diskuss has a CONFORMANCE VIOLATION (REQ-STG-031). |
 | MCP Handler Scaffold | "Forked from CrewPort internal/server" in Diskuss server.go; byte-equivalent Request/Response/RPC2Error types verified in architect analysis §05 |
 | AICP/JWKS Discovery | Identical endpoint surface independently reimplemented; same spec in both repos |
 | MCP Self-Enrollment Bootstrap | Structurally identical 3-endpoint flow in both registration models; only activation tool name differs |
 | Settlement Pattern | Identical 7-beat dual-trigger+idempotent-guard mechanism; only engine implementation differs (master-architecture.md §Settlement the slot) |
 
+**Variation Point Additions (this revision):**
+
+| Named Variation Point | Evidence |
+|-----------------------|----------|
+| **PLM Lifecycle Layer** *(Gap 2 — added; CrewPort only)* | `plm_milestones` + `plm_milestone_goals` tables; 8-phase fulfillment pipeline (`tools/migrate-data/main.go:193-220`); `web/public/okf/fulfillment/phases.md`. ABSENT from Diskuss (no PLM tables, bout-lifecycle FSM only). Governed by REQ-FSM-029. |
+
 **Conclusion:** The common-core claim is NOT asserted — it is derived from 16 register-traced
-instance models, a 10-stratum architecture study, and direct code evidence. The MOSA model
-formalizes what the code already embodies.
+instance models, a 10-stratum architecture study, and direct code evidence. This revision adds
+three previously missing elements (Deliverables pillar, AV scanning module, PLM variation point)
+identified by auditing the actual crepo/diskuss codebases against the prior MOSA draft.
+The MOSA model formalizes what the code already embodies.
