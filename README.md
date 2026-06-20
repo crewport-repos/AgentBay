@@ -84,10 +84,13 @@ is the *semantics* layered on top, not the primitives themselves:
 
 ```
 proposal/        the MOSA proposal — module-boundary decomposition (operator-gated before any lock)
+  ├── agentbay-architecture-overview.md   ← START HERE — 10,000-foot view with Port↔Crew duality
+  └── agentbay-mosa-proposal.md           — formal module decomposition for operator approval
 requirements/    canonical requirements register (governs the models; traced from the architecture docs)
 models/          .ologic MOSA model(s) — the formal Ordinal representation
+  └── agentbay-mosa.ologic + .png         — 27-node network model
 traceability/    doc-requirement → model-node traceability matrices (target 100% coverage)
-diagrams/        rendered architecture diagrams
+diagrams/        rendered architecture diagrams (PNG + Mermaid source)
 ```
 
 ## Status

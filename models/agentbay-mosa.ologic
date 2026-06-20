@@ -291,6 +291,62 @@ logic:
                     - REQ-STG-029
                     - REQ-STG-030
                     - REQ-STG-031
+                  outputs: [reputation-rating]
+
+                # ─── MODULE 10: Reputation / Rating Surface ──────────────────
+                # STRATUM 7 — per-card outcome track record. Evidenced in both repos.
+                # CrewPort: star ratings on completed contracts (project #395),
+                # accessible via retrieve_reputation MCP tool.
+                # Diskuss: Glicko-2 state per card per tract (card_tracts table:
+                # rating, rating_deviation, volatility); global ranking in index_rankings.
+                # ROADMAP (NOT MODELED): modular cross-platform memory carry-over —
+                # the operator controls which reputation sets transfer across platforms.
+                # That concept is captured in the overview doc as design intent only.
+                - id: reputation-rating
+                  type: monitor
+                  label: Reputation / Rating Surface (Per-Card Outcome Track Record)
+                  icon: users
+                  description: >
+                    The persistent, per-platform, per-card record of an agent's track
+                    record. Accumulates from repeated settlement events. EVIDENCED in
+                    both repos: CrewPort star ratings on contracts (project #395),
+                    expose via retrieve_reputation MCP tool. Diskuss Glicko-2 state per
+                    card per tract (card_tracts: rating, rating_deviation, volatility);
+                    global leaderboard in index_rankings. Reputation is the memory of
+                    the settlement outcome layer — it is what survives after the
+                    engagement closes. ROADMAP (NOT MODELED HERE): modular per-card
+                    memory with operator-controlled cross-platform carry-over — see
+                    proposal/agentbay-architecture-overview.md §Stratum 7.
+                  requirements:
+                    - REQ-DATA-037
+                  outputs: [audit-backbone]
+
+                # ─── MODULE 11: Audit Backbone (Correlation-ID Audit Trail) ──
+                # STRATUM 8 — partially evidenced. Both repos implement correlation_id
+                # audit trails but with different schemas. Grafana/RED metrics = ROADMAP.
+                # CrewPort: phase_transitions table, storage_audit_log, stripe_processed_events,
+                # AdminGetStripeTrace endpoint.
+                # Diskuss: audit_events table indexed on correlation_id, actor_card_id,
+                # operator_id, event_type; MCP instructions advertise per-tool-call audit.
+                - id: audit-backbone
+                  type: monitor
+                  label: Audit Backbone (Correlation-ID Audit Trail)
+                  icon: monitoring
+                  description: >
+                    The platform-level audit trail that binds every tool call and
+                    lifecycle event to a correlation_id. EVIDENCED in both repos:
+                    CrewPort has phase_transitions (FSM transition log), storage_audit_log
+                    (blob I/O audit), stripe_processed_events (Stripe webhook idempotency),
+                    and AdminGetStripeTrace admin endpoint. Diskuss has audit_events table
+                    with correlation_id, actor_card_id, operator_id, event_type indexes.
+                    Diskuss MCP instructions: "Every tool call is recorded as an audit event
+                    bound to the Bout's correlation_id." Schemas differ between platforms
+                    (storage_audit_log vs audit_events) — common-core extraction would
+                    unify the audit event schema. ROADMAP (NOT MODELED): full Grafana /
+                    RED metrics (Rate/Errors/Duration) instrumentation — neither repo
+                    has Prometheus or OTel export yet. See §Stratum 8 in the overview doc.
+                  requirements:
+                    - REQ-OBS-027
 
           nodes:
             # ─── SETTLEMENT INTERFACE (Strategy Slot) ──────────────────────
@@ -433,6 +489,35 @@ logic:
                     - REQ-API-039
                     - REQ-AUTH-009
                     - REQ-AUTH-030
+                  outputs: [crewport-admin-rbac-mfa]
+
+                # ─── Admin API + RBAC + MFA (STRATUM 9, CrewPort only) ────────
+                # Evidenced in CrewPort: full /api/admin/* tier + requireAdmin middleware
+                # + TOTP MFA for enterprise accounts (project #408).
+                # Diskuss has RBAC via RequireRole but NO admin tier and NO MFA.
+                # The dashboard/console surface is already core (dashboard-console node).
+                # This node captures the ADDITIONAL admin-tier capability CrewPort adds.
+                - id: crewport-admin-rbac-mfa
+                  type: firewall
+                  label: Admin API + RBAC + MFA (CrewPort — Stratum 9)
+                  icon: lock
+                  description: >
+                    CrewPort's operator-governance layer (Stratum 9). Three capabilities:
+                    (1) FULL ADMIN API TIER — /api/admin/* endpoints: Stripe reconciliation,
+                    contract overrides, enterprise provisioning; requireAdmin middleware gate.
+                    AdminGetStripeTrace provides full Stripe event audit trail. Evidenced by
+                    requireAdmin routes throughout internal/server/admin_handlers.go.
+                    (2) RBAC — single role string (operator/admin/client) via OperatorMiddleware
+                    + AdminMiddleware + MCPScopeMiddleware (rejects plain session JWTs on MCP
+                    routes). BlockSetupTokenMiddleware enforces MFA token state transitions.
+                    (3) MFA / TOTP — TOTP for enterprise accounts (project #408): standard
+                    OAuth → 5-min temporary JWT (BlockSetupTokenMiddleware) → TOTP validate
+                    endpoint → full JWT issued. Diskuss has no admin API tier and no MFA.
+                  requirements:
+                    - REQ-AUTH-037
+                    - REQ-AUTH-038
+                    - REQ-API-043
+                    - REQ-AUTH-032
 
           nodes:
             # ─── CrewPort Integration Point ──────────────────────────────────

@@ -191,7 +191,35 @@ varies (proposal §3). See proposal §1.8.
 
 ---
 
-### 1.9 Deliverables / Artifact Submission Surface (`deliverables`)
+### 1.9a Reputation / Rating Surface (`reputation-rating`) *(Stratum 7 — NEW)*
+
+**MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/reputation-rating`
+**Type:** `monitor`
+**Evidence:** Both repos track per-card outcome records. CrewPort: star ratings on completed contracts (project #395), exposed via `retrieve_reputation` MCP tool. Diskuss: Glicko-2 state per card per tract (`card_tracts` table: `rating`, `rating_deviation`, `volatility`), global leaderboard in `index_rankings`.
+
+| AgentBay REQ-ID | Requirement summary | System | CrewPort instance nodes | Diskuss instance nodes |
+|-----------------|---------------------|--------|------------------------|------------------------|
+| REQ-DATA-037 | Platform MUST maintain per-card reputation/rating record accumulating from settlement outcomes, surfaced via MCP tool | [both] | `crewport/07-agent-gateway.ologic#card-port-tools` (retrieve_reputation tool) | `diskuss/04-settlement.ologic#settler` (post-settle UpsertCardTractRating), `diskuss/02-arena-flow.ologic#ranked-terminal` |
+
+**Roadmap note:** Modular per-card memory with operator-controlled cross-platform carry-over is DESIGN INTENT only — not assigned a REQ-ID and not modeled in the `.ologic`. See §Stratum 7 in `proposal/agentbay-architecture-overview.md`.
+
+---
+
+### 1.9b Audit Backbone (`audit-backbone`) *(Stratum 8 — NEW)*
+
+**MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/audit-backbone`
+**Type:** `monitor`
+**Evidence:** Both repos implement correlation-id audit trails. CrewPort: `phase_transitions` (FSM log), `storage_audit_log` (blob I/O), `stripe_processed_events` (webhook idempotency), `AdminGetStripeTrace` endpoint. Diskuss: `audit_events` table indexed on `correlation_id`, `actor_card_id`, `operator_id`, `event_type`; MCP instructions advertise per-call audit.
+
+| AgentBay REQ-ID | Requirement summary | System | CrewPort instance nodes | Diskuss instance nodes |
+|-----------------|---------------------|--------|------------------------|------------------------|
+| REQ-OBS-027 | Every platform MUST bind all agent tool calls and engagement lifecycle events to a `correlation_id` persisted in the audit store | [both] | `crewport/01-infrastructure.ologic#api-router` (AdminGetStripeTrace route), `crewport/03-data-objects.ologic` (phase_transitions, storage_audit_log tables) | `diskuss/03-data-objects.ologic` (audit_events table), `diskuss/07-agent-gateway.ologic#tool-dispatcher` (per-call audit) |
+
+**Roadmap note:** Full Grafana / RED metrics instrumentation is NOT yet implemented in either repo. Not assigned a REQ-ID. See §Stratum 8 in `proposal/agentbay-architecture-overview.md`.
+
+---
+
+### 1.10 Deliverables / Artifact Submission Surface (`deliverables`)
 
 **MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/deliverables`
 **Type:** `process`
@@ -291,6 +319,19 @@ is not required by the MOSA common core.
 | REQ-AUTH-009 | Account-owned card gate at MCP handler (validateCrewOwnership) | `crewport/05-auth-flow.ologic#ownership-check`, `#crew-ownership-gate`, `crewport/07-agent-gateway.ologic#ownership-check` |
 | REQ-AUTH-030 | tools/list returns full static set regardless of card/role/phase | `crewport/07-agent-gateway.ologic#tool-projection` |
 
+#### Admin API + RBAC + MFA (Stratum 9) — `crewport-admin-rbac-mfa` *(NEW)*
+
+**MOSA node ID:** `agentbay-mosa-network/crewport-platform/crewport-impl/crewport-admin-rbac-mfa`
+**Type:** `firewall`
+**Evidence:** CrewPort-only. `internal/server/admin_handlers.go`, `requireAdmin` middleware, `BlockSetupTokenMiddleware`, TOTP enterprise auth (project #408). Diskuss has RBAC (`REQ-AUTH-033`) but no admin API tier and no MFA.
+
+| AgentBay REQ-ID | Requirement summary | CrewPort instance nodes |
+|-----------------|---------------------|------------------------|
+| REQ-AUTH-037 | TOTP MFA for enterprise accounts: temp JWT → TOTP validate → full JWT; `BlockSetupTokenMiddleware` gates routes | `crewport/05-auth-flow.ologic#jwt-mint` (MFA token transitions), `crewport/01-infrastructure.ologic#api-router` (BlockSetupTokenMiddleware wired) |
+| REQ-AUTH-038 | `requireAdmin` gates `/api/admin/*` routes; non-admin → 403 | `crewport/05-auth-flow.ologic#role-guard`, `crewport/01-infrastructure.ologic#api-router` (admin route registration) |
+| REQ-API-043 | Admin API tier: Stripe reconcile, contract overrides, enterprise provisioning under `/api/admin/*` | `crewport/01-infrastructure.ologic#api-router` (admin route group), `crewport/04-transaction-custody.ologic` (Stripe admin paths) |
+| REQ-AUTH-032 | ABAC single role string governs admin middleware gating | `crewport/03-data-objects.ologic#admin-membership`, `crewport/05-auth-flow.ologic#role-guard` |
+
 ---
 
 ### 2.2 Diskuss Platform Variations
@@ -362,12 +403,15 @@ It represents the headline open interface: every platform MUST implement `/.well
 | `dashboard-console` | REQ-INF-001, -002, REQ-API-001, -002 | 4 reqs governed |
 | `deliverables` *(NEW — Gap 3)* | REQ-DATA-036, REQ-API-041, REQ-API-042, REQ-DATA-010, REQ-DATA-011 | 5 reqs governed |
 | `av-scanning` *(NEW — Gap 1)* | REQ-STG-028, REQ-STG-029, REQ-STG-030, REQ-STG-031 | 4 reqs governed |
+| `reputation-rating` *(NEW — Stratum 7)* | REQ-DATA-037 | 1 req governed |
+| `audit-backbone` *(NEW — Stratum 8)* | REQ-OBS-027 | 1 req governed |
 | `settlement-interface` | REQ-TXN-001, -002, -003, -004 | 4 reqs governed |
 | `crewport-oauth-provider` | REQ-AUTH-019, -021, -035 | 3 reqs governed |
 | `crewport-domain` | REQ-DATA-006, -010, REQ-FSM-004, -005, REQ-AUTH-032 | 5 reqs governed |
 | `crewport-plm` *(NEW — Gap 2)* | REQ-FSM-029, REQ-FSM-005 | 2 reqs governed |
 | `crewport-settlement` | REQ-TXN-001, -002, -003, -005, -008, -009, -011, -012, -013 | 9 reqs governed |
 | `crewport-toolsurface` | REQ-API-004, -039, REQ-AUTH-009, -030 | 4 reqs governed |
+| `crewport-admin-rbac-mfa` *(NEW — Stratum 9)* | REQ-AUTH-037, REQ-AUTH-038, REQ-API-043, REQ-AUTH-032 | 4 reqs governed |
 | `crewport-core-link` | REQ-AUTH-001, -013, -017, REQ-API-006 | 4 reqs governed |
 | `diskuss-oauth-provider` | REQ-AUTH-020, -022, -023, -035 | 4 reqs governed |
 | `diskuss-domain` | REQ-DATA-007, -011, REQ-FSM-006, -009, REQ-AUTH-033 | 5 reqs governed |
@@ -378,10 +422,12 @@ It represents the headline open interface: every platform MUST implement `/.well
 | `mcp-registration-interface` | REQ-AUTH-013, REQ-API-022, -040 | 3 reqs governed |
 | `diskuss-registration-interface` | REQ-AUTH-013, -014, REQ-API-022, -040 | 4 reqs governed |
 
-**Unique canonical REQ-IDs governed by the MOSA model:** ~51 distinct requirements
-(across 10 strata: AUTH, DATA, API, FSM, TXN, STG — added 11 new REQ-IDs in gap closure:
-REQ-DATA-036, REQ-API-041, REQ-API-042, REQ-STG-028 through -031, REQ-FSM-029 + the
-nodes `deliverables`, `av-scanning`, `crewport-plm` added to the model).
+**Unique canonical REQ-IDs governed by the MOSA model:** ~57 distinct requirements
+(across 10 strata: AUTH, DATA, API, FSM, TXN, STG, OBS — added 11 in gap closure:
+REQ-DATA-036, REQ-API-041, REQ-API-042, REQ-STG-028–031, REQ-FSM-029;
+added 6 in architecture-overview pass: REQ-DATA-037, REQ-OBS-027, REQ-AUTH-037,
+REQ-AUTH-038, REQ-API-043 + node `reputation-rating`, `audit-backbone`, `crewport-admin-rbac-mfa`).
+**Total MOSA model nodes:** 27 (was 24 before this pass).
 
 ### Instance Model Coverage (from Rhode.Notes TRACEABILITY.md)
 
