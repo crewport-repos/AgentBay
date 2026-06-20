@@ -1,0 +1,5 @@
+# OS / editor
+.DS_Store
+*.swp
+# Rendered artifacts (commit selectively)
+*.tmp
