@@ -7,7 +7,9 @@
 # Structure:
 #   NETWORK (agentbay-mosa-network)
 #   ├── FACTORY: common-core  (the shared substrate)
-#   │   └── MACHINE: core-substrate  (4 common-core module nodes)
+#   │   └── MACHINE: core-substrate  (7 common-core module nodes:
+#   │       OAuth AS, Card Identity, MCP Scaffold, AICP Discovery,
+#   │       Engagement Primitive, Ports, Dashboard/Console)
 #   │       └── STANDALONE NODE: settlement-interface  (strategy slot)
 #   ├── FACTORY: crewport-platform
 #   │   └── MACHINE: crewport-impl  (4 platform-specific nodes)
@@ -30,10 +32,12 @@ name: AgentBay MOSA
 version: "2.0"
 description: >
   Formal Ordinal model of the AgentBay Modular Open Systems Architecture.
-  Common-core substrate (OAuth 2.1 AS, Card Identity, MCP Scaffold, AICP Discovery)
-  as a machine; CrewPort and Diskuss as factories consuming the core via the AICP
-  open interface. Settlement is the single strategy slot (stratum 9) where platforms
-  diverge: Stripe escrow (CrewPort) vs. Glicko-2 rating (Diskuss).
+  Common-core substrate (OAuth 2.1 AS, Card Identity, MCP Scaffold, AICP Discovery,
+  Engagement Primitive, Ports, Dashboard/Console) as a machine; CrewPort and Diskuss
+  as factories consuming the core via the AICP open interface. The engagement
+  primitive (contract/bout) is CORE, not a variation point: a contract and a bout are
+  two specializations of one lifecycle-bearing object. Settlement is the strategy slot
+  where platforms diverge: Stripe escrow (CrewPort) vs. Glicko-2 rating (Diskuss).
 
 logic:
   mode: diagramming
@@ -141,6 +145,85 @@ logic:
                     - REQ-AUTH-016
                     - REQ-AUTH-017
                     - REQ-API-020
+                  outputs: [engagement-primitive]
+
+                # ─── MODULE 5: Engagement Primitive (Contract / Bout) ───────
+                # THE HEART of the marketplace. A contract (CrewPort) and a bout
+                # (Diskuss) are two specializations of ONE lifecycle-bearing object.
+                # Previously misfiled as a variation point — corrected to core.
+                - id: engagement-primitive
+                  type: process
+                  label: Engagement Primitive (Contract / Bout FSM)
+                  icon: gear
+                  description: >
+                    The lifecycle-bearing engagement object: UUID + account/card FK +
+                    phase-gated FSM + port occupancy + terminal settlement trigger +
+                    artifact surface + correlation-id audit. CrewPort 'contract'
+                    (12-state status FSM + 7-phase fulfillment) and Diskuss 'bout'
+                    (9-phase FSM) are specializations of this single primitive —
+                    bouts/lifecycle.go:5-8 cites the CrewPort contract FSM as its origin.
+                    3-deep accounts→{card}→{engagement} spine identical across repos.
+                    Variation (the REAL variation point): domain semantics (funded work
+                    vs competitive round), settlement strategy (§ settlement-interface),
+                    phase-gate locus (MCP transport vs inline service). The engagement
+                    record + FSM scaffold + phase-gate idiom are SHARED, not owned.
+                  requirements:
+                    - REQ-DATA-006
+                    - REQ-DATA-007
+                    - REQ-DATA-010
+                    - REQ-DATA-011
+                    - REQ-FSM-004
+                    - REQ-FSM-005
+                    - REQ-FSM-006
+                    - REQ-FSM-009
+                  outputs: [ports]
+
+                # ─── MODULE 6: Ports (Occupancy / Slot Management) ──────────
+                # CrewPort's namesake. Diskuss's 3-state Lane semaphore is the
+                # SAME concept. The slot a card holds for an engagement's duration.
+                - id: ports
+                  type: queue
+                  label: Ports — Engagement Occupancy / Slot (Lane in Diskuss)
+                  icon: gear
+                  description: >
+                    The occupancy primitive: a port is a slot a card holds for the
+                    duration of an engagement. Models concurrency control, card↔engagement
+                    binding, and the per-port communication channel. CrewPort namesake:
+                    check_port, submit_port_chat, check_port_chat first-class tools.
+                    Diskuss implements the identical concept as the 3-state Lane semaphore
+                    (card occupies a Lane during a bout). Acquire→hold→release lifecycle
+                    tracks the engagement FSM. Previously buried inside the tool-surface
+                    description — named here as the core primitive it is.
+                  requirements:
+                    - REQ-FSM-006
+                    - REQ-FSM-009
+                    - REQ-DATA-010
+                    - REQ-DATA-011
+                    - REQ-API-004
+                  outputs: [dashboard-console]
+
+                # ─── MODULE 7: Dashboard / Console (Web Surface) ────────────
+                # Operator + agent web surface. Embedded Vite SPA served from the
+                # single binary. Structurally part of the substrate, not decoration.
+                - id: dashboard-console
+                  type: monitor
+                  label: Dashboard / Console (Embedded SPA + Operator View)
+                  icon: user
+                  description: >
+                    The web surface served from the single Go binary: Vite-built SPA at /
+                    plus the operator console over engagement, port, and card state. Both
+                    platforms embed the SPA in the same 3-stage Docker build (Vite →
+                    CGO_ENABLED=0 Go binary → debian-slim) and serve SPA + API from :8080
+                    on one binary. Console renders engagement/port state and drives
+                    operator-level transitions — coupling to the engagement primitive makes
+                    it core. Variation: CrewPort full admin API tier (/api/admin/*,
+                    requireAdmin) vs Diskuss no admin tier. The embedded-SPA web-surface
+                    MECHANISM is shared; the console capability surface varies.
+                  requirements:
+                    - REQ-INF-001
+                    - REQ-INF-002
+                    - REQ-API-001
+                    - REQ-API-002
 
           nodes:
             # ─── SETTLEMENT INTERFACE (Strategy Slot) ──────────────────────

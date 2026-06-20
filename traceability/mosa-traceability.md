@@ -114,7 +114,69 @@ trusted issuers). Instance node: `diskuss/01-infrastructure.ologic#aicp-discover
 
 ---
 
-### 1.6 Settlement Interface / Strategy Slot (`settlement-interface`)
+### 1.6 Engagement Primitive (`engagement-primitive`)
+
+**MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/engagement-primitive`
+**Type:** `process`
+**Extraction evidence:** Identical 3-deep `accounts→{card}→{engagement}` spine; phase-gated FSM in both repos; `bouts/lifecycle.go:5-8` cites the CrewPort contract FSM as its origin. The engagement record + FSM scaffold + phase-gate idiom are shared; only domain semantics + settlement strategy vary.
+
+| Canonical REQ-ID | Requirement summary | System | CrewPort instance nodes | Diskuss instance nodes |
+|------------------|---------------------|--------|------------------------|------------------------|
+| REQ-DATA-006 | Engagement spine (crew): accounts→crew_cards→contracts | [crewport] | `crewport/03-data-objects.ologic#contracts`, `#cards-to-contracts` | _(variant: REQ-DATA-007)_ |
+| REQ-DATA-007 | Engagement spine (arena): accounts→cards→bouts | [diskuss] | _(variant: REQ-DATA-006)_ | `diskuss/03-data-objects.ologic#bouts`, `#arena-to-bouts` |
+| REQ-DATA-010 | Contract engagement record: status, bid, pricing | [crewport] | `crewport/03-data-objects.ologic#contracts`, `#contract-bids` | _(variant: REQ-DATA-011)_ |
+| REQ-DATA-011 | Bout engagement record: phase, test_id, contestant_card_id | [diskuss] | _(variant: REQ-DATA-010)_ | `diskuss/02-arena-flow.ologic#bout-created`, `diskuss/03-data-objects.ologic#bouts` |
+| REQ-FSM-004 | 12-state contract status FSM (engagement specialization) | [crewport] | `crewport/02-market-flow.ologic#job-posted`...`#contract-complete` | _(variant: REQ-FSM-006)_ |
+| REQ-FSM-005 | 7-phase fulfillment FSM gated by advance_phase | [crewport] | `crewport/06-plm.ologic#phase-validator`, `crewport/07-agent-gateway.ologic#phase-*` | _(diskuss: single FSM)_ |
+| REQ-FSM-006 | 9-phase bout FSM (engagement specialization) | [diskuss] | _(variant: REQ-FSM-004)_ | `diskuss/02-arena-flow.ologic#card-idle`...`#ranked-terminal` |
+| REQ-FSM-009 | Phase/occupancy gate (Lane semaphore tracks engagement) | [diskuss] | _(crewport: port)_ | `diskuss/02-arena-flow.ologic#lane-check`, `diskuss/03-data-objects.ologic#lanes` |
+
+**Correction note:** This module was previously misfiled under §3 Variation Points ("Marketplace
+domain: contracts vs bouts"). It is CORE: a contract and a bout are two specializations of one
+lifecycle-bearing engagement object. The variation is domain semantics + settlement strategy, NOT
+the primitive. See proposal §1.6.
+
+---
+
+### 1.7 Ports / Occupancy (`ports`)
+
+**MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/ports`
+**Type:** `queue`
+**Extraction evidence:** CrewPort's namesake (`check_port`, `submit_port_chat`); Diskuss's 3-state Lane semaphore is the same occupancy/concurrency mechanism. Acquire→hold→release lifecycle tracks the engagement FSM.
+
+| Canonical REQ-ID | Requirement summary | System | CrewPort instance nodes | Diskuss instance nodes |
+|------------------|---------------------|--------|------------------------|------------------------|
+| REQ-FSM-006 | Slot occupied for engagement duration | [both] | `crewport/07-agent-gateway.ologic#card-port-tools` | `diskuss/02-arena-flow.ologic#lane-check` |
+| REQ-FSM-009 | 3-state occupancy semaphore: free → occupied → draining | [diskuss] | _(crewport: port lifecycle)_ | `diskuss/02-arena-flow.ologic#lane-check`, `diskuss/03-data-objects.ologic#lanes` |
+| REQ-DATA-010 | Port/engagement binding record | [crewport] | `crewport/03-data-objects.ologic#contracts` | _(variant: REQ-DATA-011)_ |
+| REQ-DATA-011 | Lane/bout binding record | [diskuss] | _(variant: REQ-DATA-010)_ | `diskuss/03-data-objects.ologic#lanes` |
+| REQ-API-004 | Port state exposed to agent via tool surface (check_port) | [crewport] | `crewport/07-agent-gateway.ologic#card-port-tools` | _(diskuss: lane status)_ |
+
+**Note:** Ports were previously buried inside the tool-surface description. Named here as the core
+occupancy primitive (port = Lane). See proposal §1.7.
+
+---
+
+### 1.8 Dashboard / Console (`dashboard-console`)
+
+**MOSA node ID:** `agentbay-mosa-network/common-core/core-substrate/dashboard-console`
+**Type:** `monitor`
+**Extraction evidence:** Identical deployment shape (proposal §4) — Vite SPA embedded in the single Go binary, served alongside the API from `:8080`. Both expose an operator/admin view over engagement+account state.
+
+| Canonical REQ-ID | Requirement summary | System | CrewPort instance nodes | Diskuss instance nodes |
+|------------------|---------------------|--------|------------------------|------------------------|
+| REQ-INF-001 | Single statically-linked binary serving SPA + API | [both] | `crewport/01-infrastructure.ologic#api-router` | `diskuss/01-infrastructure.ologic#api-router` |
+| REQ-INF-002 | 3-stage Docker build: Vite frontend → Go binary → debian-slim | [both] | _(deployment topology)_ | _(deployment topology)_ |
+| REQ-API-001 | chi/v5 router serves SPA + API in one place | [both] | `crewport/01-infrastructure.ologic#api-router` | `diskuss/01-infrastructure.ologic#api-router` |
+| REQ-API-002 | API surface backing the console | [both] | `crewport/01-infrastructure.ologic#mcp-handler` | `diskuss/01-infrastructure.ologic#mcp-handler` |
+
+**Variation note:** CrewPort exposes a full admin API tier (`/api/admin/*`, `requireAdmin`); Diskuss
+has no admin tier. The embedded-SPA web-surface MECHANISM is core; the console capability surface
+varies (proposal §3). See proposal §1.8.
+
+---
+
+### 1.9 Settlement Interface / Strategy Slot (`settlement-interface`)
 
 **MOSA node ID:** `agentbay-mosa-network/common-core/settlement-interface`
 **Type:** `oracle`
@@ -237,6 +299,9 @@ It represents the headline open interface: every platform MUST implement `/.well
 | `card-identity` | REQ-AUTH-006, -016, REQ-DATA-006, -007 | 4 reqs governed |
 | `mcp-scaffold` | REQ-API-001, -002, -003, -037 | 4 reqs governed |
 | `aicp-discovery` | REQ-AUTH-015, -016, -017, REQ-API-020 | 4 reqs governed |
+| `engagement-primitive` | REQ-DATA-006, -007, -010, -011, REQ-FSM-004, -005, -006, -009 | 8 reqs governed |
+| `ports` | REQ-FSM-006, -009, REQ-DATA-010, -011, REQ-API-004 | 5 reqs governed |
+| `dashboard-console` | REQ-INF-001, -002, REQ-API-001, -002 | 4 reqs governed |
 | `settlement-interface` | REQ-TXN-001, -002, -003, -004 | 4 reqs governed |
 | `crewport-oauth-provider` | REQ-AUTH-019, -021, -035 | 3 reqs governed |
 | `crewport-domain` | REQ-DATA-006, -010, REQ-FSM-004, -005, REQ-AUTH-032 | 5 reqs governed |
@@ -310,6 +375,9 @@ The "common-core" claim in the MOSA is grounded as follows:
 |-------------------|--------------------|
 | OAuth 2.1 AS | ~765-line copy-paste `internal/auth/oauth21.go`; "Ported from CrewPort" comment in Diskuss; identical flows in both registration models (commit `c0487a0`) |
 | Card Identity | Identical 3-deep spine in both repo schemas (master-architecture.md §Shared Substrate); identical incomplete→active lifecycle in both registration models |
+| **Engagement Primitive** | Identical accounts→card→engagement spine; phase-gated FSM in both; `bouts/lifecycle.go:5-8` cites CrewPort contract FSM as origin. Contract and bout are specializations of one object — CORE, not a variation point |
+| **Ports / Occupancy** | CrewPort namesake (`check_port`, `submit_port_chat`); Diskuss 3-state Lane semaphore is the same acquire→hold→release occupancy mechanism tracking the engagement FSM |
+| **Dashboard / Console** | Identical deployment shape: Vite SPA embedded in single binary, served with API from :8080 (proposal §4); operator/admin view over engagement state in both |
 | MCP Handler Scaffold | "Forked from CrewPort internal/server" in Diskuss server.go; byte-equivalent Request/Response/RPC2Error types verified in architect analysis §05 |
 | AICP/JWKS Discovery | Identical endpoint surface independently reimplemented; same spec in both repos |
 | MCP Self-Enrollment Bootstrap | Structurally identical 3-endpoint flow in both registration models; only activation tool name differs |

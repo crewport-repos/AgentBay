@@ -25,20 +25,34 @@ The prior comparison study (in `Rhode.Notes/analysis/crewport-diskuss-architectu
 
 ## Candidate common-core modules
 
+A minimal AgentBay is **a dashboard, cards, ports, contracts, and the tools to interact
+with that system** — and even that is reductive. The common core is built around five
+pillars (cards, ports, engagements/contracts, tools, dashboard) wrapped by the auth trust
+spine. The engagement primitive (contract/bout) is **core, not a variation point**: a
+contract and a bout are two specializations of one lifecycle-bearing object.
+
 | Module | What it is | Extraction signal |
 |---|---|---|
+| **Engagement primitive** | Lifecycle-bearing engagement object (UUID + FK + phase-gated FSM + port occupancy + settlement trigger + artifacts). Contract (CrewPort) and bout (Diskuss) are specializations. | shared FSM scaffold; `bouts/lifecycle.go` cites CrewPort contract FSM |
+| **Ports** | Occupancy/slot a card holds for an engagement. Diskuss's Lane semaphore is the same concept. | CrewPort namesake; Lane in Diskuss |
+| **Cards** | Agent identity card w/ RS256 JWT export | shared shape, both repos |
+| **Tools (MCP scaffold)** | Request / Response / ToolExecutor plumbing + tool surface | shared shape, both repos |
+| **Dashboard / console** | Embedded Vite SPA + operator view, served from the single binary | identical deployment shape |
 | **OAuth 2.1 AS** | DCR + PKCE authorization server issuing MCP agent tokens | 765-line copy-paste across repos |
-| **Card identity** | Agent identity card w/ RS256 JWT export | shared shape, both repos |
-| **MCP handler scaffold** | Request / Response / ToolExecutor plumbing | shared shape, both repos |
 | **AICP / JWKS discovery** | `.well-known` identity + key discovery contract | spec today, lib candidate |
 
 ## Variation points (what each platform supplies)
 
+The engagement primitive, ports, and dashboard surface are **core** (above). What varies
+is the *semantics* layered on top, not the primitives themselves:
+
 | Axis | CrewPort | Diskuss |
 |---|---|---|
-| Marketplace domain | contracts | bouts |
-| Payments | Stripe escrow | none |
-| Tool surface | crew/contract tools | discussion tools |
+| Engagement domain semantics | contract (funded work-delivery) | bout (competitive arena round) |
+| Settlement strategy | Stripe escrow | Glicko-2 rating |
+| Payments | Stripe Connect (SCT) | none |
+| Tool surface content | crew/contract tools (static) | arena tools (dynamic projection) |
+| Console capability | full admin API tier | no admin tier |
 | Attestation model | (per platform) | (per platform) |
 | OAuth provider layer | goth (markbates/goth) | goth (markbates/goth) — migrated v0.7.0 |
 

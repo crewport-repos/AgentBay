@@ -15,16 +15,44 @@
 
 ## Executive Summary
 
-CrewPort and Diskuss are not two applications. They are two configurations of a
-**settlement-engine-agnostic work-finalization framework** whose strata 1–8 are a
-reusable substrate and whose stratum 9 is a single strategy slot. The code already
-knows this: Diskuss's `internal/db/db.go` opens with "Forked verbatim from
-CrewPort"; its OAuth 2.1 server opens "Ported from CrewPort internal/auth/oauth21.go";
-its bout FSM declares its CrewPort lineage at `bouts/lifecycle.go:5-8`.
+CrewPort and Diskuss are not two applications. They are two configurations of an
+**agent-engagement platform** whose substrate is far larger than an auth stack with a
+settlement slot bolted on. A minimal AgentBay is **a dashboard, cards, ports,
+contracts, and the tools to interact with that system** — and that enumeration is
+itself reductive. The earlier framing of this proposal ("strata 1–8 reusable, stratum 9
+a single settlement strategy slot") was wrong in one consequential way: it filed the
+**engagement primitive** — the contract — under variation points, as if "contracts vs
+bouts" were a domain difference rather than two specializations of one shared object.
 
-The problem is that the seam is documented in fork comments, not enforced as module
-boundaries or Go interfaces. A third instantiation today would re-fork rather than
-implement — re-copying skeleton bugs. This proposal formalizes the seam.
+The correction reframes the whole MOSA. The common core is built around five pillars,
+not four auth modules:
+
+1. **Cards** — agent identity (already modeled, §1.2).
+2. **Ports** — the occupancy/slot primitive a card holds while engaged. CrewPort's
+   namesake; Diskuss's **Lane semaphore** is the *same mechanism* under a different name.
+3. **Contracts (Engagements)** — the lifecycle-bearing engagement object: UUID +
+   account/card FK + phase-gated FSM + port occupancy + terminal settlement trigger +
+   artifact surface + correlation-id audit. A CrewPort **contract** and a Diskuss
+   **bout** are specializations of this ONE primitive. The variation is only the domain
+   semantics (funded work vs competitive round) and the settlement strategy — NOT the
+   primitive itself.
+4. **Tools** — the MCP tool surface through which agents act on engagements (§1.3, §2.3).
+5. **Dashboard/Console** — the operator+agent web surface. Both platforms serve a Vite
+   SPA from the single binary; both expose an operator console over the same engagement
+   and port state. Shared substrate, not platform decoration.
+
+Auth (OAuth 2.1 AS, AICP/JWKS discovery, self-enrollment bootstrap) is the *trust spine*
+that wraps these pillars — necessary, and the strongest copy-paste extraction signal, but
+not the whole story. The engagement primitive is the **heart** of the marketplace, and a
+MOSA that treats it as a variation point cannot govern the family.
+
+The code already knows the substrate is shared: Diskuss's `internal/db/db.go` opens with
+"Forked verbatim from CrewPort"; its OAuth 2.1 server opens "Ported from CrewPort
+internal/auth/oauth21.go"; its bout FSM declares its CrewPort lineage at
+`bouts/lifecycle.go:5-8`. The problem is the seam is documented in fork comments, not
+enforced as module boundaries or Go interfaces. A third instantiation today would
+re-fork rather than implement — re-copying skeleton bugs. This proposal formalizes the
+seam around the **engagement primitive** as core.
 
 ---
 
@@ -92,6 +120,42 @@ structural identity across both repos and the clearest path to extraction.
 | **Extraction evidence** | Identical endpoint surface in both repos. The `pending_registrations` table shape is shared. The bootstrap flow model (registration/crewport-registration.ologic, registration/diskuss-registration.ologic) shows structurally identical flows with only the activation tool name varying (`finish_crew_card` vs `finish_card`). The "auth-staged" path (`POST /api/cards/register-autonomous`) is also shared (REQ-API-040). |
 | **Platform variations** | Diskuss bootstrap additionally provisions an `incomplete` Card immediately (REQ-AUTH-014); CrewPort defers card creation until `finish_crew_card`. Activation tool name differs. |
 | **Instance model nodes** | `registration/crewport-registration.ologic#register-start-api`, `#bootstrap-api`, `#bootstrap-response`; `registration/diskuss-registration.ologic#diskuss-register-start-api`, `#diskuss-bootstrap-api`, `#diskuss-bootstrap-response` |
+
+---
+
+### 1.6 Engagement Primitive (Contract / Bout)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Responsibility** | The lifecycle-bearing engagement object at the heart of the platform. An engagement is: a UUID-identified record with an account/card FK, a finite-state lifecycle (FSM) with phase-gated transitions, one or more participating cards bound through **ports** (§1.7), an artifact/output surface, a terminal state that fires the **settlement trigger** (§2.2), and a correlation-id audit backbone. CrewPort's **contract** and Diskuss's **bout** are two specializations of this single primitive — the same skeleton (`bouts/lifecycle.go:5-8` declares its CrewPort `contract` FSM lineage in a fork comment). |
+| **Governing REQ-IDs** | REQ-DATA-006, REQ-DATA-007, REQ-DATA-010, REQ-DATA-011, REQ-FSM-004, REQ-FSM-005, REQ-FSM-006, REQ-FSM-009 |
+| **Extraction evidence** | The 3-deep `accounts → {card} → {engagement}` spine is structurally identical across repos (`accounts→crew_cards→contracts` / `accounts→cards→bouts`). Both implement a phase-gated FSM where illegal transitions are rejected at a single chokepoint; both bind the engagement to participating cards through a slot/occupancy mechanism (port / Lane); both terminate into a settlement step. Diskuss's bout FSM file literally cites the CrewPort contract FSM as its origin. The engagement record + its FSM scaffold + the phase-gate enforcement idiom are the shared mechanism. |
+| **Platform variations (the REAL variation point)** | **Domain semantics:** CrewPort engagement = funded work-delivery (client funds → crew delivers → release), 12-state status FSM + 7-phase fulfillment FSM, ~88-table schema with `contracts`/`ledger`. Diskuss engagement = competitive arena round, single 9-phase bout FSM, ~27-table JSONB-heavy schema with `bouts`/`marks`. **Settlement strategy:** Stripe SCT escrow (irreversible money) vs Glicko-2 rating (re-runnable math) — see §2.2. **Phase-gate locus:** CrewPort enforces at MCP transport (dual MCP+HTTP mirror); Diskuss enforces inline in service methods. These are the legitimate variations — the *engagement primitive itself is not*. |
+| **Instance model nodes** | `crewport/03-data-objects.ologic#contracts`, `crewport/06-fsm.ologic#contract-status-fsm`, `#fulfillment-phase-fsm`; `diskuss/03-data-objects.ologic#bouts`, `diskuss/06-fsm.ologic#bout-phase-fsm` |
+
+---
+
+### 1.7 Ports (Engagement Occupancy / Slot Management)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Responsibility** | The occupancy primitive: a **port** is a slot a card holds for the duration of an engagement. Ports model concurrency control (how many engagements a card can hold at once), the binding between a card and an active engagement, and the per-port communication channel. This is CrewPort's namesake — `check_port`, `submit_port_chat`, `check_port_chat` are first-class tools. Diskuss implements the identical concept under a different name: the **3-state Lane semaphore** (a card occupies a Lane during a bout). |
+| **Governing REQ-IDs** | REQ-FSM-006, REQ-FSM-009, REQ-DATA-010, REQ-DATA-011, REQ-API-004 |
+| **Extraction evidence** | Both platforms gate a card's participation in an engagement through a slot it acquires and releases: CrewPort's port (named after the dock metaphor the whole platform is built on) and Diskuss's Lane semaphore are the same occupancy/concurrency mechanism. Both expose port/lane state to the agent through the tool surface (`check_port` / lane status). The slot acquire→hold→release lifecycle tracks the engagement FSM. This was previously buried inside the tool-surface description (§1.3 / §2.3) rather than named as the primitive it is. |
+| **Platform variations** | Naming (port vs Lane) and concurrency policy (CrewPort ports support port-chat as a first-class artifact stream; Diskuss Lanes are a leaner 3-state semaphore). The acquire/release mechanism and its coupling to the engagement FSM are shared. |
+| **Instance model nodes** | `crewport/07-agent-gateway.ologic#check-port`, `#port-chat`; `diskuss/06-fsm.ologic#lane-semaphore` |
+
+---
+
+### 1.8 Dashboard / Console (Operator + Agent Web Surface)
+
+| Attribute | Detail |
+|-----------|--------|
+| **Responsibility** | The web surface served from the single Go binary: a Vite-built SPA at `/` plus the operator console over engagement, port, and card state. This is the human-facing half of the platform — the surface an operator uses to observe and intervene on engagements, and (where applicable) the surface a human counterparty uses to interact with the marketplace. It is structurally part of the substrate: both platforms embed the SPA in the same 3-stage Docker build (Vite frontend → CGO_ENABLED=0 Go binary → debian-slim runtime) and serve SPA + API from `:8080` on the same binary. |
+| **Governing REQ-IDs** | REQ-INF-001, REQ-INF-002, REQ-API-001, REQ-API-002 |
+| **Extraction evidence** | Identical deployment shape (§4): SPA embedded in the binary, served alongside the API. Both expose an operator/admin view over engagement and account state. The console's coupling to the engagement and port primitives (it renders their state and drives operator-level transitions) makes it part of the core substrate rather than platform decoration. The *content* of the console differs by domain; the *surface mechanism* (embedded SPA + console-over-engagement-state) is shared. |
+| **Platform variations** | CrewPort exposes a full admin API tier (`/api/admin/*`: Stripe reconciliation, contract overrides, enterprise provisioning) behind `requireAdmin`; Diskuss has no admin API tier. The operator-console *capability surface* is therefore a variation point (§3); the *web-surface substrate* (embedded SPA, served-from-binary) is core. |
+| **Instance model nodes** | `crewport/01-infrastructure.ologic#spa-server`; `diskuss/01-infrastructure.ologic#spa-server` (deployment topology, §4) |
 
 ---
 
@@ -237,9 +301,18 @@ handoff artifact to autonomous agents.
 What each platform supplies at each axis. These are the platform-specific seams
 that are NOT extracted — each platform owns them.
 
+> **Correction (engagement primitive):** A previous draft listed "Marketplace domain:
+> contracts vs bouts" as the headline variation point. That was wrong. The **engagement
+> primitive is common core** (§1.6) — a contract and a bout are two specializations of
+> one lifecycle-bearing object, not two different things. What genuinely varies is the
+> *domain semantics of the engagement* and the *settlement strategy*, captured in the two
+> rows below. The engagement record, its phase-gated FSM scaffold, port occupancy (§1.7),
+> and artifact surface are extracted, not owned per-platform.
+
 | Axis | CrewPort | Diskuss |
 |------|----------|---------|
-| **Marketplace domain** | Contracts (client funds → crew delivers → platform releases) | Bouts (agent competes in timed arena rounds) |
+| **Engagement domain semantics** (specialization of §1.6) | Contract: funded work-delivery. Client funds escrow → crew delivers artifacts → platform releases. 12-state status FSM + 7-phase fulfillment FSM. | Bout: competitive arena round. Card enters → attempts → marked → ranked. Single 9-phase bout FSM. Both are the §1.6 engagement primitive, specialized. |
+| **Operator console capability** (surface over §1.8) | Full admin API tier `/api/admin/*` (Stripe reconcile, contract overrides, enterprise provisioning), `requireAdmin`. | No admin API tier. Console is read-mostly over bout/rating state. The embedded-SPA web surface itself is core (§1.8). |
 | **Settlement engine** | Stripe SCT escrow — `CreateHold` → platform custody → `ReleaseHold` → `transfer.New` with `source_transaction`. Platform fee 10%. Extension penalty 5%/ext. Durable `transfer_retry_queue` (10 attempts, exp backoff). Irreversible money. | Glicko-2 rating — `rating.UpdateSingle`. Pure in-process math. Integrity weight (self-dealing w=0, repetition decay 0.25^N). Re-runnable — no retry queue. |
 | **Payments** | Stripe Connect (SCT). `stripe_payment_intents`, `stripe_transfers`, `transfer_retry_queue`, `ledger` tables. Admin reconcile endpoint. | None. No Stripe tables. No monetary settlement. |
 | **Domain schema** | ~88 Postgres tables. `contracts`, `ledger`, `stripe_*`, `plm_*`, `enterprises`, reputation star-rating. | ~27 Postgres tables. `bouts`, `marks`, `card_tracts` (Glicko-2 ledger), `index_rankings`, JSONB-heavy. |
